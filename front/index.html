@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-GLhlTQ8iRABdZLl6O3oVMWSktQOp6b7In1Zl3/Jr59b6EGGoI1aFkw7cmDA6j6gD" crossorigin="anonymous">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js" integrity="sha384-w76AqPfDkMBDXo30jS1Sgez6pr3x5MlQ1ZAGC+nuZB+EYdgRZgiwxhTBTkF7CXvN" crossorigin="anonymous"></script>
+</head>
+<body>
+    <div id="login_section" class="section hidden">
+        <h2>Your Name</h2><br/>
+        <input id="user"><br><br>
+        <button id="login" onclick="onLogin()">LOG IN</button>
+    </div>
+    <div id="chat_section" class="section hidden">
+        <h2>Hello <span class="currentUser"></span></h2>
+
+        <div class="container">
+        <div class="list-group">
+            <a href="#" class="list-group-item list-group-item-action flex-column align-items-start active">
+              <div class="d-flex w-100 justify-content-between">
+                <h5 class="mb-1">List group item heading</h5>
+                <small>3 days ago</small>
+              </div>
+              <p class="mb-1">Donec id elit non mi porta gravida at eget metus. Maecenas sed diam eget risus varius blandit.</p>
+              <small>Donec id elit non mi porta.</small>
+            </a>
+          </div>
+        </div>
+
+        <h2>SendMessage</h2><br/>
+        <input id="message"><br><br>
+        <button id="btnMessage" onclick="onMessageSend()">LOG IN</button>
+
+        <button id="logout" onclick="onLogout()">LOG OUT</button>
+    </div>
+    <style>
+        .hidden {
+            display: none;
+        }
+    </style>
+
+    <script>
+
+        const currentIdStorageKey = "currentId";
+        const currentNameStorageKey = "currentUser";
+
+        const chatStage = "chat_section";
+        const loginStage = "login_section";
+
+        let connection;
+        
+
+        let currentStage = getCurrentStage();
+
+        if (currentStage === chatStage) {
+            showChatStage();
+        } else {
+            showLoginStage();
+        }
+
+
+        function showLoginStage() {
+            hideAllSectionsExceptId(loginStage);
+        }
+
+        function showChatStage() {
+            hideAllSectionsExceptId(chatStage);
+        }
+
+        function updateCurrentUserNameOnUI() {
+            const currentUser = getUser();
+            const elementsToBeUpdated = document.querySelectorAll(".currentUser");
+            elementsToBeUpdated.forEach(function(element) {
+                element.innerHTML = currentUser.name;
+            })
+        }
+
+        function hideAllSectionsExceptId(id) {
+            let allSections = document.querySelectorAll(".section");
+            allSections.forEach(function(section) {
+
+                if (section.id == id && section.classList.contains("hidden")) {
+                    section.classList.remove("hidden");
+                    return;
+                }
+                if (!section.classList.contains("hidden") && section.id != id) {
+                    section.classList.add("hidden");
+                }
+            })
+        }
+
+        function onLogin () {
+            createNewUser();
+            updateCurrentUserNameOnUI();
+            connectToServer();
+            showChatStage();
+        }
+
+        function onMessageSend() {
+            const currentUser = getUser();
+            const messageText = document.getElementById('message').value;
+            let message = {};
+            message.command = "newMessage";
+            message.parameters = {};
+            message.parameters.userId = currentUser.id;
+            message.parameters.text = messageText;
+            message.parameters.userName = currentUser.name;
+
+            const jsonedMessage = JSON.stringify(message);
+            console.log(jsonedMessage);
+            connection.send(jsonedMessage);
+            
+        }
+
+        function connectToServer() {
+            // Create WebSocket connection.
+            const socket = new WebSocket('ws://localhost:9502');
+
+            // Connection opened
+            socket.addEventListener('open', (event) => {
+                const user = getUser();
+                let message = {};
+                message.command = "register";
+                message.parameters = {};
+                message.parameters.userId = user.id;
+                message.parameters.userName = user.name;
+                
+                const jsonedMessage = JSON.stringify(message);
+                socket.send(jsonedMessage);
+            });
+
+            // Listen for messages
+            socket.addEventListener('message', (event) => {
+                console.log('Message from server ', event.data);
+
+                const user = getUser();
+
+                const data = JSON.parse(event.data);
+
+                let template = `
+
+                    <a href="#" class="list-group-item list-group-item-action flex-column align-items-start active">
+              <div class="d-flex w-100 justify-content-between">
+                <h5 class="mb-1">{{name}}</h5>
+                <small>3 days ago</small>
+              </div>
+              <p class="mb-1">{{text}}</small>
+            </a>
+
+            `;
+
+
+                if (data.command == "newMessage") {
+                    
+
+            
+
+
+            const name = data.parameters.userId == user.id ? "Me" : data.parameters.userName;
+
+            const text = data.parameters.text;            
+
+            const messageToAdd = template.replace('{{name}}', name).replace('{{text}}', text);
+
+            const container = document.querySelector('.list-group');
+            container.innerHTML += messageToAdd;
+
+
+                
+        }
+
+        let name;
+        let text;
+
+        if (data.command == "newUser") {
+            name ="SYSTEM";
+            text = data.parameters.id == user.id ? "YOU ARE JOINED" : data.parameters.name + " ARE JOINED";
+            const messageToAdd = template.replace('{{name}}', name).replace('{{text}}', text);
+
+            const container = document.querySelector('.list-group');
+            container.innerHTML += messageToAdd;
+            
+        } 
+    
+    
+    
+    });
+
+            connection = socket;
+        }
+
+        function onLogout() {
+            disconnectFromServer();
+            eraseCurrentUser();
+            showLoginStage();
+        }
+
+        function eraseCurrentUser() {
+            localStorage.removeItem(currentIdStorageKey);
+            localStorage.removeItem(currentNameStorageKey);
+        }
+
+        function disconnectFromServer() {
+            if (connection)
+                connection.close(); 
+        }
+        
+
+        function getCurrentStage() {
+            let user = getUser();
+            return user.id && user.id.length > 0  ? chatStage : loginStage;
+        }
+
+        function getUser() {
+            return {
+                name: localStorage.getItem(currentNameStorageKey),
+                id: localStorage.getItem(currentIdStorageKey)
+            };
+        }
+
+        function createNewUser() {
+            let newUserId = uuId();
+            let userName = document.getElementById("user").value;
+
+            localStorage.setItem(currentNameStorageKey, userName);
+            localStorage.setItem(currentIdStorageKey, newUserId);
+        }
+
+        function uuId() {
+            let u = Date.now().toString(16)+Math.random().toString(16)+'0'.repeat(16);
+            let guid = [u.substr(0,8), u.substr(8,4), '4000-8' + u.substr(13,3), u.substr(16,12)].join('-');
+            return guid;
+        }
+        
+    </script>
+</body>
+</html>
